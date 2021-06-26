@@ -1,0 +1,212 @@
+---
+title: "Course 8 Project"
+author: "Kaushik Sivasankaran"
+date: "6/25/2021"
+output: html_document
+---
+
+
+# Executive Summary
+
+In this project, we aim to use the data from ccelerometers on the belt, forearm, arm, and dumbell of 6 participants and predict the manner in which did the exercise. We will use the "classe" variable in the training set as the main predictor to do to so. But during the exericse we will explore other viable predictors in the training dataset as well.
+
+# Inital Preperation
+
+
+```{r warning = FALSE, error=FALSE}
+# free up memory
+
+rm(list = ls())
+
+# set working directory
+
+setwd("D:/Users/kaushik.sivasankaran/Desktop/R/Course 8/Course-8-Project")
+
+# load libraries
+
+library(knitr)
+library(caret)
+library(rattle)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(RColorBrewer)
+library(corrplot)
+```
+
+Then let us set the seed to ensure reproducibility.
+
+```{r echo = TRUE}
+set.seed(12345)
+
+```
+
+# Loading and Cleansing the Data
+
+## Loading the Data
+
+```{r echo = TRUE}
+
+# set the URL for the download
+UrlTrain <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+UrlTest  <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+# download the datasets
+training <- read.csv(url(UrlTrain))
+testing  <- read.csv(url(UrlTest))
+
+dim(training)
+
+dim(testing)
+
+
+```
+
+
+
+## Cleaning the Data
+
+Having a quick look at the data, there are a lot of columns with nearly zero variability. Alsom there are NA values in many of the variables, which can be removed with the following data cleansing process.
+
+```{r echo = TRUE}
+# removing valriables with Nearly Zero Variance
+
+NZV <- nearZeroVar(training)
+training <- training[, -NZV]
+testing  <- testing[, -NZV]
+
+dim(training)
+
+dim(testing)
+
+```
+
+This has now reduced the number of variables from 160 to 100.
+
+```{r echo = TRUE}
+# remove variables that are mostly NA
+
+AllNA    <- sapply(training, function(x) mean(is.na(x))) > 0.95
+training <- training[, AllNA==FALSE]
+testing  <- testing[, AllNA==FALSE]
+
+dim(training)
+
+dim(testing)
+```
+
+Further cleaning has now reduced the required variables to 59. 
+
+Next, it looks like the first 6 variables don't add much value towards our model. Hence, we will remove those variables.
+
+```{r echo=TRUE}
+
+training <- training[,7:59]
+
+testing <- testing[,7:59]
+
+dim(training)
+
+dim(testing)
+
+```
+# Creating Data Partitions
+
+Now that the data is fairly clean, we can go ahead and create the data partition
+
+```{r echo = TRUE}
+# create a partition with the training dataset 
+
+inTrain  <- createDataPartition(training$classe, p=0.7, list=FALSE)
+
+TrainSet <- training[inTrain,]
+
+TestSet  <- training[-inTrain,]
+
+dim(TrainSet)
+
+dim(TestSet)
+
+
+```
+
+
+# Model Building For Prediction
+
+We will be using 3 methods to model the predictions from the train dataset. The methods are: Random Forests, Decision Tree, and Generelized Boosted Method. The one with the highest accuracy when applied to the test dataset will be used as the final model fit.
+
+## i. Random Forest
+
+```{r echo = TRUE}
+
+# model fit
+set.seed(12345)
+
+modFitRandForest <- randomForest(classe ~ ., data = TrainSet)
+
+
+# prediction on Test dataset
+predictRandForest <- predict(modFitRandForest, newdata=TestSet)
+confMatRandForest <- confusionMatrix(predictRandForest, TestSet$classe)
+confMatRandForest
+
+# plot matrix results
+plot(confMatRandForest$table, col = confMatRandForest$byClass, 
+     main = paste("Random Forest - Accuracy =",
+                  round(confMatRandForest$overall['Accuracy'], 4)))
+
+```
+
+## ii. Decision Trees
+
+```{r echo = TRUE}
+# model fit
+set.seed(12345)
+modFitDecTree <- rpart(classe ~ ., data = TrainSet, method = "class")
+
+fancyRpartPlot(modFitDecTree)
+
+
+# prediction on Test dataset
+predictDecTree <- predict(modFitDecTree, newdata=TestSet, type="class")
+confMatDecTree <- confusionMatrix(predictDecTree, TestSet$classe)
+confMatDecTree
+
+# plot matrix results
+plot(confMatDecTree$table, col = confMatDecTree$byClass, 
+     main = paste("Decision Tree - Accuracy =",
+                  round(confMatDecTree$overall['Accuracy'], 4)))
+
+```
+
+## iii. Generalized Boosted Model
+```{r echo = TRUE}
+# model fit
+set.seed(12345)
+controlGBM <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+modFitGBM  <- train(classe ~ ., data=TrainSet, method = "gbm",
+                    trControl = controlGBM, verbose = FALSE)
+
+modFitGBM$finalModel
+
+# prediction on Test dataset
+predictGBM <- predict(modFitGBM, newdata=TestSet)
+confMatGBM <- confusionMatrix(predictGBM, TestSet$classe)
+confMatGBM
+
+# plot matrix results
+plot(confMatGBM$table, col = confMatGBM$byClass, 
+     main = paste("GBM - Accuracy =", round(confMatGBM$overall['Accuracy'], 4)))
+```
+
+#Applying the Selected Model to the Test Data
+
+The accuracy of the 3 regression modeling methods above are: a. Random Forest : 0.9963 b. Decision Tree : 0.7392 c. GBM : 0.9618
+
+The Random Forest model has the best model fit since its accuracy is better than the other two models. Hence, the Random Forest model will be applied to predict the testing dataset.
+
+```{r echo = TRUE}
+predictTEST <- predict(modFitRandForest, newdata=testing)
+predictTEST
+
+```
